@@ -191,7 +191,6 @@ html,body{height:100%;background:var(--bg);font-family:var(--font-sans);color:va
   <a class="ext-pill ghost" href="https://docs.google.com/spreadsheets/d/1GwW2rnb6vPJUhOMVvmVlykEVeL-8hwd0-wGGprmho40/edit?usp=sharing" target="_blank" rel="noopener">Stock Selection <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg></a>
   <button class="tab" id="tab-9" onclick="showApp(9)">Risk Plan</button>
   <button class="tab tab-chart" id="tab-10" onclick="showApp(10)">SMC Chart</button>
-  <button class="tab" id="tab-11" onclick="showApp(11)">Momentum Screener</button>
   <a class="ext-pill ghost" href="https://nepsealpha.com/promoter-lock-in" target="_blank" rel="noopener">Promoter Lock-in <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg></a>
   </div>
   <!-- Theme toggle -->
@@ -15535,6 +15534,14 @@ syncRiskRs();
         .bsl-sig-btn.active { background:rgba(163,230,53,0.12);border-color:#a3e635;color:#a3e635; }
         .bsl-wr-btn.active  { background:rgba(249,115,22,0.12);border-color:#f97316;color:#fb923c; }
         .bsl-sep { width:1px;height:18px;background:#1e2a1e;flex-shrink:0; }
+        .bsl-copy-btn {
+            padding:5px 10px;border-radius:6px;border:1px solid #38bdf8;
+            background:rgba(56,189,248,0.10);color:#38bdf8;font-size:10px;font-weight:700;
+            cursor:pointer;transition:all 0.15s;white-space:nowrap;
+        }
+        .bsl-copy-btn:hover { background:rgba(56,189,248,0.22);color:#bae6fd; }
+        .bsl-copy-btn.copied { background:rgba(34,197,94,0.22);border-color:#4ade80;color:#4ade80; }
+        .bsl-copy-btn:disabled { opacity:.45;cursor:not-allowed; }
         #bsl-run-btn {
             padding:5px 14px;border-radius:6px;border:1px solid #a3e635;
             background:rgba(163,230,53,0.12);color:#a3e635;font-size:12px;font-weight:700;
@@ -17019,6 +17026,7 @@ syncRiskRs();
                 <span class="bsl-title">■ BSL/SSL Buy Screener</span>
                 <span id="bsl-scr-date-tag" style="font-size:11px;color:#4a6a4a;font-weight:600;"></span>
                 <span id="bsl-scr-counts" style="font-size:11px;color:#4a6a4a;"></span>
+                <button id="bsl-copy-btn" class="bsl-copy-btn" onclick="bslCopyVisibleSymbols()" disabled title="Copy symbols from the current category, signal, and win-rate filters">📋 Copy symbols</button>
                 <span class="bsl-t2-note">🇳🇵 T+2 Settlement — NEPSE</span>
                 <button id="bsl-run-btn" onclick="runBslScreener()">▶ Scan All</button>
                 <button onclick="closeBslScreener()" style="background:none;border:none;color:#4a6a4a;font-size:18px;cursor:pointer;padding:0 0 0 4px;line-height:1;" title="Close">✕</button>
@@ -17180,11 +17188,7 @@ syncRiskRs();
 // ═══════════════════════════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════════════════════════
-const REPO_ORIGIN = (() => { try { return (window.top && window.top.location && window.top.location.origin && window.top.location.origin !== 'null') ? window.top.location.origin : window.location.origin; } catch (_) { return window.location.origin; } })();
-const GITHUB_DATA_URL = REPO_ORIGIN + '/data/nepse_ohlc.json';
-const GITHUB_FAST_URL = REPO_ORIGIN + '/data/nepse_ohlc_fast.json';
-const CHUNK_MANIFEST_URL = REPO_ORIGIN + '/data/chunks/manifest.json';
-const DATA_URL = CHUNK_MANIFEST_URL;
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyFnbTJV4J5zzmpJeEItw-ZdTKfkhj90WwLrYkBa1wcnNhwldUQYqwcNJMKwBXfxQ1l/exec';
 let _loaderDeadlineReached = false;
 
 // Early guard is intentionally placed before chart/data functions: a CDN,
@@ -17196,7 +17200,7 @@ function showEarlyLoaderFailure(message) {
     if (error) error.classList.remove('hidden');
     const msg = document.getElementById('error-message'), hint = document.getElementById('error-hint');
     if (msg) msg.textContent = 'NEPSE app could not start: ' + (message || 'Unknown error');
-    if (hint) hint.textContent = 'Refresh after checking internet access and the repository data files.';
+    if (hint) hint.textContent = 'Refresh after checking internet access and the Apps Script endpoint.';
 }
 window.addEventListener('error', event => {
     if (event && event.error) showEarlyLoaderFailure(event.error.message || String(event.error));
@@ -17210,7 +17214,7 @@ setTimeout(() => {
     if (loading && !loading.classList.contains('hidden')) showEarlyLoaderFailure('Data loading timed out.');
 }, 60000);
 
-// Known index / sub-index names (from the repository JSON output)
+// Known index / sub-index names (from the Apps Script output)
 const MAIN_INDICES = ['Index', 'Sensitive Index', 'Float Index', 'Sensitive Float Index'];
 const SUB_INDICES  = [
     'Banking SubIndex', 'Development Bank Index', 'Finance Index',
@@ -21565,9 +21569,9 @@ function switchInstrumentData() {
 //    • After market close   (Sun–Thu 15:00+)          → until next 10:30 NPT
 //    • Pre-market / weekend (Fri–Sat or before 11:00) → 20 hours
 // ═══════════════════════════════════════════════════════════════
-const CACHE_KEY_FAST = 'nepse_chart_cache_fast_github_features_v1';
-const CACHE_KEY_FULL = 'nepse_chart_cache_full_github_features_v1';
-const IDB_NAME       = 'nepse_chart_idb_github_features_v1';
+const CACHE_KEY_FAST = 'nepse_chart_cache_fast';
+const CACHE_KEY_FULL = 'nepse_chart_cache_full';
+const IDB_NAME       = 'nepse_chart_idb';
 const IDB_STORE      = 'cache';
 const IDB_VERSION    = 1;
 const AUTO_REFRESH_MARKER_KEY = 'nepse_auto_refresh_npt_day_v1';
@@ -21679,7 +21683,7 @@ async function getCachedData(key) {
 }
 
 // A local HTML file must never remain on the loading screen indefinitely when
-// IndexedDB or the repository data files is blocked, slow, or offline.
+// IndexedDB or the Apps Script endpoint is blocked, slow, or offline.
 function withTimeout(promise, timeoutMs, message) {
     let timer;
     const timeout = new Promise((_, reject) => {
@@ -21825,21 +21829,6 @@ function mergeInstruments(freshInstruments) {
     }
 }
 
-
-async function fetchChunkedRows() {
-    const manifestResponse = await fetchWithTimeout(CHUNK_MANIFEST_URL + '?v=' + Date.now(), { method: 'GET', redirect: 'follow', cache: 'no-store' }, 10000);
-    if (!manifestResponse.ok) throw new Error('Chunk manifest request failed: ' + manifestResponse.status);
-    const manifest = await manifestResponse.json();
-    if (!manifest || !Array.isArray(manifest.files) || !manifest.files.length) throw new Error('No history chunks found in repository');
-    const parts = await Promise.all(manifest.files.map(async (file) => {
-        const response = await fetchWithTimeout(REPO_ORIGIN + '/data/chunks/' + encodeURIComponent(file) + '?v=' + Date.now(), { method: 'GET', redirect: 'follow', cache: 'no-store' }, 20000);
-        if (!response.ok) throw new Error('History chunk request failed: ' + file + ' (' + response.status + ')');
-        const rows = await response.json();
-        return Array.isArray(rows) ? rows : [];
-    }));
-    return parts.flat().sort((a, b) => String(a.Date || '').localeCompare(String(b.Date || '')));
-}
-
 async function loadData(options) {
     const opts = options || {};
     const forceNetwork = !!opts.forceNetwork;
@@ -21860,7 +21849,7 @@ async function loadData(options) {
             if (!allData.length && !fullDataLoaded) {
                 errorEl.classList.remove('hidden');
                 document.getElementById('error-message').textContent = 'NEPSE data request timed out.';
-                document.getElementById('error-hint').textContent = 'Check your internet connection and ensure the repository data files is accessible, then refresh.';
+                document.getElementById('error-hint').textContent = 'Check your internet connection and ensure the Apps Script endpoint is accessible, then refresh.';
             } else if (updateEl) {
                 updateEl.textContent = 'NEPSE data loaded partially — refresh to retry the remaining data.';
             }
@@ -21929,11 +21918,12 @@ async function loadData(options) {
     }
 
     // ── Step 3: fire BOTH network requests in parallel right now ──
-    const fastPromise = fetchWithTimeout(GITHUB_FAST_URL, { method: 'GET', redirect: 'follow' }, 30000)
+    const fastPromise = fetchWithTimeout(SHEET_URL + '?type=fast', { method: 'GET', redirect: 'follow' }, 30000)
         .then(r => r.ok ? r.json() : null)
         .catch(() => null);
 
-    const fullPromise = fetchChunkedRows();
+    const fullPromise = fetchWithTimeout(SHEET_URL, { method: 'GET', redirect: 'follow' }, 60000)
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
 
     // ── Step 4: as soon as fast resolves, render if not already up ──
     fastPromise.then(fastData => {
@@ -26072,7 +26062,7 @@ function runInOutCustomAllHistory() {
     const available=Object.keys(allInstruments||{});
     if (!available.length) { if(status){status.textContent='Stock data is still loading. Please try again.';status.style.color='#f87171';} return; }
     _iopCustomHistoryMode=true; _iopCustomHistoryRows=[];
-    if(btn){btn.disabled=true;btn.textContent='\\u23F3 History…';}
+    if(btn){btn.disabled=true;btn.textContent='\u23F3 History…';}
     if(status){status.textContent='Scanning all confirmed pattern histories for '+symbols.length+' symbol'+(symbols.length===1?'':'s')+'…';status.style.color='#7a5a9a';}
     body.innerHTML='<div style="padding:24px;color:#a78bfa;font-size:12px;text-align:center;">Loading all confirmed In/Out pattern histories…</div>';
     setTimeout(()=>{
@@ -29261,7 +29251,7 @@ function _stockCharacterOutpatOccurrence(p, idx, total, rawPivots, data) {
     return {...p, occurrence:idx + 1, patternName:'OutPat CHoCH', barsAgo:Number.isFinite(triggerIdx) ? Math.max(0,total - 1 - triggerIdx) : null, breakIdx:triggerIdx, startIdx, breakTime:data[triggerIdx] && data[triggerIdx].time, startTime:outPivot && outPivot.time || data[startIdx] && data[startIdx].time, levelPrice};
 }
 function _stockCharacterEscape(value) {
-    return String(value == null ? '' : value).replace(/[&<>\\"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;',"'":'&#39;'}[ch]));
+    return String(value == null ? '' : value).replace(/[&<>\"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]));
 }
 function _stockCharacterDate(time) { return String(time == null ? '' : time).slice(0,10); }
 function _stockCharacterBarsAgo(occurrence, totalBars) {
@@ -30274,6 +30264,7 @@ function obwOpenInstrument(name) {
 //  BSL / SSL BUY SCREENER
 // ═══════════════════════════════════════════════════════════════
 let _bslResults = [];
+let _bslVisibleResults = [];
 let _bslCat     = 'all';
 let _bslSig     = 'all';
 let _bslMinWr   = 0;
@@ -30322,6 +30313,29 @@ function bslSetWr(btn) {
     _bslMinWr = parseFloat(btn.dataset.wr);
     if (_bslResults.length) renderBslScreener();
 }
+function bslCopyVisibleSymbols() {
+    var symbols = _bslVisibleResults.map(function(r){ return r.name === 'Index' ? 'NEPSE' : r.name; }).filter(Boolean);
+    var btn = document.getElementById('bsl-copy-btn');
+    if (!symbols.length) {
+        if (btn) { var empty = btn.textContent; btn.textContent = 'Nothing to copy'; setTimeout(function(){ btn.textContent = empty; }, 1500); }
+        return;
+    }
+    var text = symbols.join('\\n');
+    var done = function(){
+        if (!btn) return;
+        var old = btn.textContent;
+        btn.textContent = '✅ Copied ' + symbols.length + '!';
+        btn.classList.add('copied');
+        setTimeout(function(){ btn.textContent = old; btn.classList.remove('copied'); }, 1800);
+    };
+    var fallback = function(){
+        var ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        try { document.execCommand('copy'); done(); } finally { document.body.removeChild(ta); }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(fallback); else fallback();
+}
+
 function bslSort(hd) {
     var key = hd.dataset.sort;
     if (_bslSort.key === key) _bslSort.asc = !_bslSort.asc;
@@ -30776,6 +30790,9 @@ function renderBslScreener() {
     if (_bslMinWr > 0) filtered = filtered.filter(function(r){ return r.winRate !== null && r.winRate >= _bslMinWr; });
 
     if (!filtered.length) {
+        _bslVisibleResults = [];
+        var emptyCopyBtn = document.getElementById('bsl-copy-btn');
+        if (emptyCopyBtn) { emptyCopyBtn.disabled = true; emptyCopyBtn.textContent = '📋 Copy symbols'; emptyCopyBtn.classList.remove('copied'); }
         body.innerHTML = '<div style="padding:28px;text-align:center;color:#3a5a3a;font-size:12px;">No instruments match the current filters.</div>';
         return;
     }
@@ -30788,6 +30805,13 @@ function renderBslScreener() {
         if (typeof av === 'string') return asc ? av.localeCompare(bv) : bv.localeCompare(av);
         return asc ? av - bv : bv - av;
     });
+    _bslVisibleResults = filtered.slice();
+    var copyBtn = document.getElementById('bsl-copy-btn');
+    if (copyBtn) {
+        copyBtn.disabled = !_bslVisibleResults.length;
+        copyBtn.textContent = _bslVisibleResults.length ? '📋 Copy ' + _bslVisibleResults.length + ' symbols' : '📋 Copy symbols';
+        copyBtn.classList.remove('copied');
+    }
 
     // Signal display config (buy phase removed — non-seasonal BSL = chart SELL signal only)
     var sigCfg = {
@@ -31012,7 +31036,7 @@ function showInitialLoadError(err) {
     const msg = err && err.message ? err.message : String(err || 'Unknown startup error');
     const msgEl = document.getElementById('error-message'), hintEl = document.getElementById('error-hint');
     if (msgEl) msgEl.textContent = 'NEPSE app startup failed: ' + msg;
-    if (hintEl) hintEl.textContent = 'Refresh after checking internet access and the repository data files.';
+    if (hintEl) hintEl.textContent = 'Refresh after checking internet access and the Apps Script endpoint.';
 }
 // Final bootstrap guard: if initChart/loadData is blocked by a browser or
 // local-file dependency, replace the indefinite spinner with a clear message.
@@ -31041,8 +31065,6 @@ setTimeout(repositionDrawBtn, 300);
 
 
 
-
-  apps[11] = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>Momentum Screener</title><style>\n:root{--bg:#0a0f1e;--surface:#111827;--surface2:#1a2235;--text:#f1f5f9;--muted:#94a3b8;--border:rgba(255,255,255,.09);--green:#10b981;--red:#ef4444;--amber:#f59e0b;--blue:#60a5fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:13px Arial,sans-serif}main{padding:20px;max-width:1500px;margin:auto}.head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px}.title{font-size:22px;font-weight:800}.sub{color:var(--muted);font-size:11px;margin-top:4px}.controls{display:flex;flex-wrap:wrap;gap:8px;background:var(--surface);border:1px solid var(--border);padding:12px;border-radius:12px;margin-bottom:14px}.controls label{color:var(--muted);font-size:10px;display:flex;flex-direction:column;gap:4px}.controls input,.controls select,.controls button{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:8px 9px;font-size:12px}.controls button{cursor:pointer;font-weight:700;background:#065f46}.controls button.secondary{background:var(--surface2)}.status{margin-left:auto;color:var(--muted);align-self:center;font-size:11px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}.card h2{font-size:13px;margin:0;padding:12px 14px;background:var(--surface2)}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px}.metric{background:var(--surface2);padding:10px;border-radius:8px}.metric small{display:block;color:var(--muted);font-size:10px}.metric strong{display:block;margin-top:5px;font-size:16px}.table-wrap{overflow:auto;max-height:62vh}table{width:100%;border-collapse:collapse;white-space:nowrap}th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:right}th{position:sticky;top:0;background:#172238;color:var(--muted);font-size:10px}th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}.sym{color:var(--blue);cursor:pointer;font-weight:700}.pos{color:var(--green)}.neg{color:var(--red)}.hold{color:var(--amber)}.empty{padding:30px;text-align:center;color:var(--muted)}canvas{width:100%;height:230px;display:block;padding:10px}.note{padding:10px 14px;color:var(--muted);font-size:11px;line-height:1.5;border-top:1px solid var(--border)}@media(max-width:850px){.grid{grid-template-columns:1fr}.summary{grid-template-columns:repeat(2,1fr)}.status{width:100%;margin-left:0}}\n</style></head><body><main><div class=\"head\"><div><div class=\"title\">Momentum Screener & Backtest</div><div class=\"sub\">6M + 12M risk-adjusted momentum · Monthly review · Existing SMCChart OHLC cache</div></div><div id=\"dataStatus\" class=\"sub\">Loading local OHLC…</div></div><div class=\"controls\"><label>Capital (NPR)<input id=\"capital\" type=\"number\" value=\"100000\" min=\"1\"></label><label>Portfolio size<select id=\"size\"><option>5</option><option selected>10</option><option>20</option><option>30</option></select></label><label>Exit rank<input id=\"exitRank\" type=\"number\" value=\"20\" min=\"1\"></label><label>Transaction cost %<input id=\"fee\" type=\"number\" value=\"0.5\" min=\"0\" step=\"0.1\"></label><label>Backtest start<input id=\"start\" type=\"date\" value=\"2021-01-01\"></label><label>Backtest end<input id=\"end\" type=\"date\"></label><button id=\"refresh\">Refresh Data</button><button id=\"run\" class=\"secondary\">Run Screener</button><button id=\"backtest\">Run Backtest</button></div><div class=\"grid\"><section class=\"card\"><h2>Latest Ranking</h2><div class=\"table-wrap\"><table><thead><tr><th>Rank</th><th>Symbol</th><th>6M Return</th><th>12M Return</th><th>Volatility</th><th>Score</th><th>Signal</th></tr></thead><tbody id=\"rows\"><tr><td colspan=\"7\" class=\"empty\">Loading…</td></tr></tbody></table></div><div class=\"note\">Click a symbol to open it in the existing SMC Chart. Daily data may refresh, while the action signal should be reviewed monthly.</div></section><section class=\"card\"><h2>Historical Backtest</h2><div class=\"summary\"><div class=\"metric\"><small>Final value</small><strong id=\"final\">—</strong></div><div class=\"metric\"><small>Total return</small><strong id=\"ret\">—</strong></div><div class=\"metric\"><small>Max drawdown</small><strong id=\"dd\">—</strong></div><div class=\"metric\"><small>Trades</small><strong id=\"trades\">—</strong></div></div><canvas id=\"equity\" width=\"900\" height=\"230\"></canvas><div id=\"backtestNote\" class=\"note\">Run the backtest after the local OHLC dataset loads.</div></section></div></main><script>\nconst IDB_NAME='nepse_chart_idb_github_features_v1', STORE='cache', KEY_FULL='nepse_chart_cache_full_github_features_v1', KEY_FAST='nepse_chart_cache_fast_github_features_v1';let raw=[], instruments={};\nfunction esc(s){return String(s).replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]))}function pct(x){return Number.isFinite(x)?(x*100).toFixed(2)+'%':'—'}function money(x){return 'NPR '+Math.round(x).toLocaleString('en-IN')}\nfunction openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(IDB_NAME,1);r.onupgradeneeded=e=>{if(!e.target.result.objectStoreNames.contains(STORE))e.target.result.createObjectStore(STORE)};r.onsuccess=e=>res(e.target.result);r.onerror=()=>rej(r.error)})}function get(k){return openDB().then(db=>new Promise(res=>{const r=db.transaction(STORE).objectStore(STORE).get(k);r.onsuccess=()=>res(r.result&&r.result.data||null);r.onerror=()=>res(null)}))}\nfunction parse(rows){const map={};for(const row of rows||[]){const date=String(row.Date||row.date||'').slice(0,10);if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))continue;for(const [k,v] of Object.entries(row)){let m=k.match(/^(.+)\\s+-\\s+(Open|High|Low|Close|Turnover)$/i)||k.match(/^([A-Za-z0-9]+)-(Open|High|Low|Close|Volume)$/i);if(!m)continue;const name=m[1].trim(),field=m[2].toLowerCase(),n=parseFloat(String(v).replace(/,/g,''));if(!Number.isFinite(n)||n<=0)continue;(map[name]||(map[name]={}))[date]||(map[name][date]={});map[name][date][field]=n}}const out={};for(const [name,dm] of Object.entries(map)){const a=Object.entries(dm).map(([time,d])=>({time,...d})).filter(d=>d.open&&d.high&&d.low&&d.close).sort((a,b)=>a.time.localeCompare(b.time));if(a.length)out[name]=a}return out}\nfunction load(){return Promise.all([get(KEY_FULL),get(KEY_FAST)]).then(a=>{raw=a[0]||a[1]||[];instruments=parse(raw);const n=Object.keys(instruments).length;document.getElementById('dataStatus').textContent=n?'Loaded '+n+' instruments · '+raw.length+' rows':'No local full OHLC cache found';if(n)runScreen()}).catch(e=>document.getElementById('dataStatus').textContent='Local cache unavailable')}\nfunction dates(a){return a.map(x=>x.time)}function idxAt(a,date){let lo=0,hi=a.length-1,b=-1;while(lo<=hi){const m=(lo+hi)>>1;if(a[m].time<=date){b=m;lo=m+1}else hi=m-1}return b}function stats(a,i){if(i<252)return null;const r6=a[i].close/a[Math.max(0,i-126)].close-1,r12=a[i].close/a[i-252].close-1;const rs=[];for(let j=i-251;j<=i;j++)if(j>0)rs.push(a[j].close/a[j-1].close-1);const mean=rs.reduce((s,x)=>s+x,0)/rs.length,sd=Math.sqrt(rs.reduce((s,x)=>s+(x-mean)**2,0)/Math.max(1,rs.length-1))*Math.sqrt(252);if(!sd)return null;return {r6,r12,vol:sd,score:(r6/sd+r12/sd)/2}}\nfunction allScores(date){const out=[];for(const [symbol,a] of Object.entries(instruments)){const i=idxAt(a,date),s=stats(a,i);if(s)out.push({symbol,...s,i,bars:a})}return out.sort((x,y)=>y.score-x.score).map((x,i)=>({...x,rank:i+1}))}\nfunction signal(r,size,exit){return r.rank<=size?'BUY':r.rank<=exit?'HOLD':'REPLACE'}\nfunction runScreen(){const end=document.getElementById('end').value||Object.values(instruments).flat().map(x=>x.time).sort().pop();const ranked=allScores(end),size=+document.getElementById('size').value,exit=+document.getElementById('exitRank').value;const body=document.getElementById('rows');if(!ranked.length){body.innerHTML='<tr><td colspan=\"7\" class=\"empty\">At least 252 trading days plus 6/12-month history are required.</td></tr>';return}body.innerHTML=ranked.slice(0,Math.min(ranked.length,100)).map(r=>{const c=r.r6>=0?'pos':'neg',sig=signal(r,size,exit),sc=sig==='BUY'?'pos':sig==='HOLD'?'hold':'neg';return '<tr><td>'+r.rank+'</td><td><span class=\"sym\" onclick=\"openChart(\\''+esc(r.symbol)+'\\')\">'+esc(r.symbol)+'</span></td><td class=\"'+c+'\">'+pct(r.r6)+'</td><td class=\"'+(r.r12>=0?'pos':'neg')+'\">'+pct(r.r12)+'</td><td>'+pct(r.vol)+'</td><td>'+r.score.toFixed(3)+'</td><td class=\"'+sc+'\">'+sig+'</td></tr>'}).join('')}\nfunction openChart(sym){try{parent.postMessage({type:'smc-open-symbol',symbol:sym},'*')}catch(e){}}\nfunction monthEnds(start,end){const set=new Set();for(const a of Object.values(instruments))for(const b of a)if(b.time>=start&&b.time<=end)set.add(b.time.slice(0,7));return [...set].sort().map(m=>{let best='';for(const a of Object.values(instruments))for(const b of a)if(b.time.slice(0,7)===m&&b.time>best)best=b.time;return best}).filter(Boolean)}\nfunction runBacktest(){const cap=+document.getElementById('capital').value||100000,size=+document.getElementById('size').value,exit=+document.getElementById('exitRank').value,fee=(+document.getElementById('fee').value||0)/100,start=document.getElementById('start').value,end=document.getElementById('end').value||Object.values(instruments).flat().map(x=>x.time).sort().pop();const reviews=monthEnds(start,end),eq=[],trades=[];let value=cap,holdings=[];for(let k=0;k<reviews.length-1;k++){const d=reviews[k],next=reviews[k+1],ranked=allScores(d);if(!ranked.length)continue;const by=new Map(ranked.map(x=>[x.symbol,x]));const keep=holdings.filter(s=>{const r=by.get(s);return r&&r.rank<=exit});const picks=ranked.filter(r=>r.rank<=size).map(r=>r.symbol);const nextHold=[...new Set([...keep,...picks])].slice(0,size);const changed=nextHold.filter(s=>!holdings.includes(s)).length+holdings.filter(s=>!nextHold.includes(s)).length;if(changed)trades.push({date:d,n:changed});const w=1/Math.max(1,nextHold.length);let mult=0;for(const s of nextHold){const a=instruments[s],i=idxAt(a,d),j=idxAt(a,next);if(i>=0&&j>i)mult+=w*(a[j].close/a[i].close);else mult+=w}value*=mult;value*=Math.max(0,1-fee*changed/Math.max(1,size));holdings=nextHold;eq.push({date:next,value})}const vals=eq.map(x=>x.value);let peak=cap,maxDD=0;for(const v of vals){peak=Math.max(peak,v);maxDD=Math.min(maxDD,v/peak-1)}document.getElementById('final').textContent=vals.length?money(vals.at(-1)):'—';document.getElementById('ret').textContent=vals.length?pct(vals.at(-1)/cap-1):'—';document.getElementById('dd').textContent=vals.length?pct(maxDD):'—';document.getElementById('trades').textContent=trades.reduce((s,x)=>s+x.n,0);document.getElementById('backtestNote').textContent=eq.length?'Monthly simulation completed: '+eq.length+' review periods · fees included at '+(+document.getElementById('fee').value||0)+'% estimated cost.':'Insufficient overlapping historical data.';draw(eq,cap)}\nfunction draw(eq,cap){const c=document.getElementById('equity'),x=c.getContext('2d'),w=c.width,h=c.height;x.clearRect(0,0,w,h);if(!eq.length)return;const vals=eq.map(e=>e.value),min=Math.min(cap,...vals),max=Math.max(cap,...vals),pad=20;x.strokeStyle='#334155';x.beginPath();x.moveTo(pad,h-pad);x.lineTo(w-pad,h-pad);x.stroke();x.strokeStyle='#10b981';x.lineWidth=2;x.beginPath();eq.forEach((e,i)=>{const px=pad+i*(w-2*pad)/Math.max(1,eq.length-1),py=h-pad-(e.value-min)/Math.max(1,max-min)*(h-2*pad);i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();x.fillStyle='#94a3b8';x.font='11px Arial';x.fillText('NPR '+Math.round(min).toLocaleString('en-IN'),pad, h-4);x.fillText('NPR '+Math.round(max).toLocaleString('en-IN'),pad,14)}\ndocument.getElementById('run').onclick=runScreen;document.getElementById('backtest').onclick=runBacktest;document.getElementById('refresh').onclick=load;document.getElementById('end').value=new Date().toISOString().slice(0,10);load();\n<\/script></body></html>";
 
   /* Pre-create all iframes so every app starts loading immediately.
      Switching tabs only toggles CSS display — no reload, no data loss. */
